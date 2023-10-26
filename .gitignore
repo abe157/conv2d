@@ -30,6 +30,9 @@
 *.exe
 *.out
 *.app
+conv2d
+conv2d_default
+conv2d_tensor
 
 # Other
 build/

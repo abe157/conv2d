@@ -1,6 +1,6 @@
 #include <cudnn.h>
 #include <cuda_fp16.h>
-#include <opencv2/opencv.hpp>
+// #include <opencv2/opencv.hpp>
 #include <stdexcept>
 #include <vector>
 
@@ -38,34 +38,45 @@ void half2float(const half* input, std::size_t size, float* output) {
     }
 }
 
-auto main(int argc, const char** argv) -> int {
-    if (argc != 2) {
-        std::cout << "usage: conv2d <filename>\n";
-        return -1;
-    }
-    
-    const char* filename = argv[1];
-    cv::Mat image = cv::imread(filename);
-    if (image.empty()) {
-        throw std::runtime_error("cv::imread() failed: image not found");
-    }
-    
-    image.convertTo(image, CV_32FC3);
-    cv::normalize(image, image, 0.0, 1.0, cv::NORM_MINMAX);
 
-    const std::size_t image_size = image.total() * image.channels();
+#define N 1 // Batches
+#define C 1  // Channels
+#define H 1024 // Hight
+#define W H // Width
+
+
+auto main(int argc, const char** argv) -> int {
+    // if (argc != 2) {
+    //     // std::cout << "usage: conv2d <filename>\n";
+    //     printf("usage: conv2d <0: TENSOR_OP_MATH 1: DEFAULT_MATH>\n");
+    //     return -1;
+    // }
+
+    // int op_type = atoi(argv[1]);
+    // const char* filename = argv[1];
+    // cv::Mat image = cv::imread(filename);
+    // if (image.empty()) {
+    //     throw std::runtime_error("cv::imread() failed: image not found");
+    // }
+    
+    // image.convertTo(image, CV_32FC3);
+    // cv::normalize(image, image, 0.0, 1.0, cv::NORM_MINMAX);
+
+    // const std::size_t image_size = image.total() * image.channels();
+    // const std::size_t image_size = N * C * H * W;
+    const size_t image_size = N * C * H * W;
     
     cudnnHandle_t cudnn_handle;
     cudnnCheckError(cudnnCreate(&cudnn_handle));
 
     float* d_input = nullptr;
     cudaCheckError(cudaMalloc(&d_input, image_size * sizeof(float)));
-    cudaCheckError(cudaMemcpy(d_input, image.ptr<float>(0), image_size * sizeof(float), cudaMemcpyDefault));
+    // cudaCheckError(cudaMemcpy(d_input, image.ptr<float>(0), image_size * sizeof(float), cudaMemcpyDefault));
     
     half* fp16_image = nullptr;
     cudaCheckError(cudaMalloc(&fp16_image, image_size * sizeof(half)));
 
-    float2half<<<1, 64>>>(d_input, image_size, fp16_image);
+    // float2half<<<1, 64>>>(d_input, image_size, fp16_image); // cpy
     cudaFree(d_input);
 
     cudnnTensorDescriptor_t input_desc;
@@ -74,10 +85,10 @@ auto main(int argc, const char** argv) -> int {
         input_desc,
         CUDNN_TENSOR_NHWC,
         CUDNN_DATA_HALF,
-        1,
-        image.channels(),
-        image.rows,
-        image.cols
+        N, // 1,
+        C, // image.channels(),
+        H, // image.rows,
+        W  // image.cols
     ));
 
     cudnnFilterDescriptor_t filter_desc;
@@ -86,8 +97,8 @@ auto main(int argc, const char** argv) -> int {
         filter_desc,
         CUDNN_DATA_HALF,
         CUDNN_TENSOR_NCHW,
-        image.channels(),
-        image.channels(),
+        C, // image.channels(),
+        C, // image.channels(),
         3,
         3
     ));
@@ -103,7 +114,19 @@ auto main(int argc, const char** argv) -> int {
         CUDNN_DATA_HALF
     ));
 
+#if MODE == 0
+    printf("Using CUDNN_DEFAULT_MATH.\n");
+    cudnnCheckError(cudnnSetConvolutionMathType(conv_desc, CUDNN_DEFAULT_MATH));
+#elif MODE == 1
+    printf("Using CUDNN_TENSOR_OP_MATH.\n");
     cudnnCheckError(cudnnSetConvolutionMathType(conv_desc, CUDNN_TENSOR_OP_MATH));
+#elif MODE == 2
+    printf("Using CUDNN_DEFAULT_MATH.\n");
+    cudnnCheckError(cudnnSetConvolutionMathType(conv_desc, CUDNN_DEFAULT_MATH));
+#else
+    printf("Using CUDNN_FMA_MATH.\n");
+    cudnnCheckError(cudnnSetConvolutionMathType(conv_desc, CUDNN_FMA_MATH));
+#endif
 
     cudnnTensorDescriptor_t output_desc;
     cudnnCheckError(cudnnCreateTensorDescriptor(&output_desc));
@@ -112,9 +135,9 @@ auto main(int argc, const char** argv) -> int {
         CUDNN_TENSOR_NHWC,
         CUDNN_DATA_HALF,
         1,
-        image.channels(),
-        image.rows,
-        image.cols
+        C, // image.channels(),
+        H, // image.rows,
+        W  // image.cols
     ));
 
     cudnnConvolutionFwdAlgo_t fwd_algo;
@@ -196,16 +219,16 @@ auto main(int argc, const char** argv) -> int {
     half2float<<<1, 64>>>(d_output, image_size, fp32_output);
     cudaFree(d_output);
     
-    cv::Mat output(image.rows, image.cols, CV_32FC3);
-    cudaCheckError(cudaMemcpy(output.ptr<float>(0), fp32_output, image_size * sizeof(float), cudaMemcpyDefault));
+    // cv::Mat output(image.rows, image.cols, CV_32FC3);
+    // cudaCheckError(cudaMemcpy(output.ptr<float>(0), fp32_output, image_size * sizeof(float), cudaMemcpyDefault));
 
-    cv::normalize(output, output, 0.0, 255.0, cv::NORM_MINMAX);
-    output.convertTo(output, CV_8UC3);
+    // cv::normalize(output, output, 0.0, 255.0, cv::NORM_MINMAX);
+    // output.convertTo(output, CV_8UC3);
 
-    cv::imshow("output", output);
-    cv::waitKey();
+    // cv::imshow("output", output);
+    // cv::waitKey();
 
-    cv::imwrite("output.png", output);
+    // cv::imwrite("output.png", output);
 
     cudaFree(d_filter);
     cudaFree(d_workspace);
@@ -218,6 +241,6 @@ auto main(int argc, const char** argv) -> int {
     cudnnDestroyTensorDescriptor(output_desc);
 
     cudnnDestroy(cudnn_handle);
-
+    printf("Conv Done.\n");
     return 0;
 }
