@@ -1,6 +1,6 @@
 
-OCV_F += `pkg-config --cflags opencv4`
-OCV_L += `pkg-config --libs opencv4`
+# OCV_F += `pkg-config --cflags opencv4`
+# OCV_L += `pkg-config --libs opencv4`
 
 NVCC=/usr/local/cuda/bin/nvcc
 ARCH=-arch=sm_86
@@ -28,10 +28,6 @@ conv2d_%.o: conv2d.cu
 
 %.o: %.cu
 	$(NVCC) $(NVCC_MAKE_FLAGS) $(OCV_F) -dc $< -o $@ 
-
-
-
-
 
 clean:
 	rm -rf $(TARGET) ./*.o
